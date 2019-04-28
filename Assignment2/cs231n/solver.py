@@ -121,7 +121,8 @@ class Solver(object):
         self.y_val = data['y_val']
 
         # Unpack keyword arguments
-        self.update_rule = kwargs.pop('update_rule', 'sgd')
+        # python 字典pop方法，删除字典指定key及对应的value
+        self.update_rule = kwargs.pop('update_rule', 'sgd') 
         self.optim_config = kwargs.pop('optim_config', {})
         self.lr_decay = kwargs.pop('lr_decay', 1.0)
         self.batch_size = kwargs.pop('batch_size', 100)
@@ -142,7 +143,8 @@ class Solver(object):
         # name with the actual function
         if not hasattr(optim, self.update_rule):
             raise ValueError('Invalid update_rule "%s"' % self.update_rule)
-        self.update_rule = getattr(optim, self.update_rule)
+        self.update_rule = getattr(optim, self.update_rule)  
+        #getattr(object, name, default) - 返回一个对象属性值，这里返回了对象中定义的一个函数
 
         self._reset()
 
@@ -239,8 +241,8 @@ class Solver(object):
             y = y[mask]
 
         # Compute predictions in batches
-        num_batches = N // batch_size
-        if N % batch_size != 0:
+        num_batches = N // batch_size  #//实现整除，通过batch_size计算出batch的数目
+        if N % batch_size != 0:  #无法整除，则batch数目加一
             num_batches += 1
         y_pred = []
         for i in range(num_batches):
