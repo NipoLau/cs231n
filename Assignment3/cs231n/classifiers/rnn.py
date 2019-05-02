@@ -140,6 +140,31 @@ class CaptioningRNN(object):
         # Note also that you are allowed to make use of functions from layers.py   #
         # in your implementation, if needed.                                       #
         ############################################################################
+        # (1) - features (N, D) -> initial hidden state (N, H) Using W_proj (D, H) b_proj (H,) Produce h0 (N, H)
+        h0 = features.dot(W_proj) + b_proj
+        # (2) - captions_in (N, T) -> captions_vector (N, T, W) Using W_embed (V, W)
+        captions_vector, captions_cache = word_embedding_forward(captions_in, W_embed)
+        # (3) - produce hidden state vectors
+        if (self.cell_type == 'rnn'):
+          h, hidden_cache = rnn_forward(captions_vector, h0, Wx, Wh, b)
+        else:
+          h, hidden_cache = lstm_forward(captions_vector, h0, Wx, Wh, b)
+        # (4) - transform hidden state vector into scores (N, T, V) for each word in the vocabulary
+        scores, scores_cache = temporal_affine_forward(h, W_vocab, b_vocab)
+        # (5) - compute loss using softmax, ignore <NULL> using mask (N, T)
+        loss, dscores = temporal_softmax_loss(scores, captions_out, mask)
+        # (4) - backward
+        dh, grads['W_vocab'], grads['b_vocab'] = temporal_affine_backward(dscores, scores_cache)
+        # (3) - backward
+        if (self.cell_type == 'rnn'):
+          dcaptions_vector, dh0, grads['Wx'], grads['Wh'], grads['b'] = rnn_backward(dh, hidden_cache)
+        else:
+          dcaptions_vector, dh0, grads['Wx'], grads['Wh'], grads['b'] = lstm_backward(dh, hidden_cache)
+        # (2) - backward
+        grads['W_embed'] = word_embedding_backward(dcaptions_vector, captions_cache)
+        # (1) - backward
+        grads['W_proj'] = features.T.dot(dh0)
+        grads['b_proj'] = np.sum(dh0, axis=0)
         pass
         ############################################################################
         #                             END OF YOUR CODE                             #
@@ -205,6 +230,45 @@ class CaptioningRNN(object):
         # NOTE: we are still working over minibatches in this function. Also if   #
         # you are using an LSTM, initialize the first cell state to zeros.        #
         ###########################################################################
+        # At each time step, sample minibatches of data, x - (N, W) ; h - (N, H) ; Wx - (W, H)
+        '''
+        W = W_embed.shape[1]
+        H = W_proj.shape[1]
+        embed_x = np.zeros((N, W))
+        c = np.zeros((N, H))
+        for i in range(max_length):
+          if (i == 0):
+            h = features.dot(W_proj) + b_proj
+            embed_x[:] = W_embed[self._start]
+            captions[:,i] = self._start
+          else:
+            if (self.cell_type == 'rnn'):
+              h, _ = rnn_step_forward(embed_x, h, Wx, Wh, b)
+            else:
+              h, c, _ = lstm_step_forward(embed_x, h, c, Wx, Wh, b)
+            embed_x = W_embed[captions[:,i-1]]
+            captions[:,i] = np.argmax(h.dot(W_vocab) + b_vocab, axis=1)
+            '''
+        N, D = features.shape
+        affine_out, affine_cache = affine_forward(features ,W_proj, b_proj)
+    
+        prev_word_idx = [self._start]*N
+        prev_h = affine_out
+        prev_c = np.zeros(prev_h.shape)
+        captions[:,0] = self._start
+        for i in range(1,max_length):
+            prev_word_embed  = W_embed[prev_word_idx]
+            if self.cell_type == 'rnn':
+                next_h, rnn_step_cache = rnn_step_forward(prev_word_embed, prev_h, Wx, Wh, b)
+            elif self.cell_type == 'lstm':
+                next_h, next_c,lstm_step_cache = lstm_step_forward(prev_word_embed, prev_h, prev_c, Wx, Wh, b)
+                prev_c = next_c
+            else:
+                raise ValueError('Invalid cell_type "%s"' % self.cell_type)
+            vocab_affine_out, vocab_affine_out_cache = affine_forward(next_h, W_vocab, b_vocab)
+            captions[:,i] = list(np.argmax(vocab_affine_out, axis = 1))
+            prev_word_idx = captions[:,i]
+            prev_h = next_h
         pass
         ############################################################################
         #                             END OF YOUR CODE                             #
